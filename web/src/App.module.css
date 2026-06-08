@@ -1,10 +1,10 @@
 /* App.module.css */
 .root {
-  position: fixed;
-  bottom: 40px;
-  left: 40px;
-  width: 680px;
-  height: 530px;
+ width: 710px;
+    height: 450px;
+    margin-top: 20px;
+    margin-left: 10px;
+    
   background: var(--bg-root);
   border-radius: var(--radius-lg);
   border: 0.5px solid var(--border);

@@ -1,13 +1,13 @@
-import { useState, useRef, useCallback, KeyboardEvent } from 'react'
+import { useState, useCallback, KeyboardEvent } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useChatStore }  from '../../store/chatStore'
 import { useSendNUI }    from '../../hooks/useSendNUI'
 import EmojiPanel, { EmojiEntry } from '../EmojiPanel/EmojiPanel'
 import styles from './InputZone.module.scss'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface Props {
-  channel: 'global' | 'staff'
+  channel:  'global' | 'staff'
+  inputRef: React.RefObject<HTMLInputElement>   // ← ajout
 }
 
 interface CmdEntry {
@@ -35,41 +35,49 @@ const COMMANDS: CmdEntry[] = [
 ]
 
 // ── Component ──────────────────────────────────────────────────────────────
-export default function InputZone({ channel }: Props) {
-  const { dispatch } = useChatStore()
-  const { send }     = useSendNUI()
+export default function InputZone({ channel, inputRef }: Props) {
+  const { send } = useSendNUI()
 
   const [value,     setValue]     = useState<string>('')
   const [emojiOpen, setEmojiOpen] = useState<boolean>(false)
   const [tabList,   setTabList]   = useState<CmdEntry[]>([])
   const [tabIdx,    setTabIdx]    = useState<number>(0)
-  const inputRef = useRef<HTMLInputElement>(null)
+  
 
   const filterCmds = useCallback((v: string): CmdEntry[] => {
     if (!v.startsWith('/')) return []
     return COMMANDS.filter(c => c.cmd.startsWith(v)).slice(0, 6)
   }, [])
 
-  // ── Envoi ──────────────────────────────────────────────────────────────
-  const handleSend = useCallback(() => {
-    const v = value.trim()
-    if (!v) return
-
-    const text = v.startsWith('/me ') ? '* ' + v.slice(4) : v
-    dispatch({ type: 'SEND_MESSAGE', channel, text })
-    send('sendMessage', { channel, message: v })
-
+  // ── Reset helpers ──────────────────────────────────────────────────────
+  const resetInput = useCallback(() => {
     setValue('')
     setTabList([])
     setEmojiOpen(false)
-  }, [value, channel, dispatch, send])
+  }, [])
+
+  // ── Envoi ──────────────────────────────────────────────────────────────
+  // Pas de dispatch local : le serveur broadcast en retour via receiveGlobal/receiveStaff,
+  // ce qui alimente le store. Évite le double affichage.
+const handleSend = useCallback(() => {
+  const v = value.trim()
+  if (!v) return
+
+  resetInput()
+
+  if (v.startsWith('/')) {
+    send('executeCommand', { command: v })
+    return
+  }
+
+  send('sendMessage', { channel, message: v })
+}, [value, channel, send, resetInput])
 
   // ── Clavier ────────────────────────────────────────────────────────────
   const handleKeyDown = useCallback((e: KeyboardEvent<HTMLInputElement>) => {
 
     if (e.key === 'Enter') {
       e.preventDefault()
-      // Si une suggestion est visible, valider sans envoyer
       if (tabList.length > 0) {
         setValue(tabList[tabIdx].cmd + ' ')
         setTabList([])
@@ -89,7 +97,6 @@ export default function InputZone({ channel }: Props) {
         setTabIdx(0)
         return
       }
-      // Cycle TAB
       const next = (tabIdx + 1) % tabList.length
       setTabIdx(next)
       setValue(tabList[next].cmd + ' ')
@@ -125,14 +132,13 @@ export default function InputZone({ channel }: Props) {
     setTabIdx(0)
   }
 
-  // ── Emoji RP ──────────────────────────────────────────────────────────
+  // ── Emoji RP ───────────────────────────────────────────────────────────
+  // Pas de dispatch local non plus : le serveur broadcast le /me en retour
   const handleEmoji = useCallback((em: EmojiEntry) => {
-    const text = `* ${em.a} ${em.e}`
-    dispatch({ type: 'SEND_MESSAGE', channel, text })
-    send('sendMessage', { channel, message: `/me ${em.a} ${em.e}` })
+    send('executeCommand', { command: `/me ${em.a} ${em.e}` })
     setEmojiOpen(false)
     inputRef.current?.focus()
-  }, [channel, dispatch, send])
+  }, [send])
 
   const isCmd    = value.startsWith('/')
   const charLeft = 150 - value.length

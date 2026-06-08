@@ -22,9 +22,14 @@ export function useNUI(): void {
 
       switch (action) {
 
-        case 'openChat':
-          dispatch({ type: 'OPEN_CHAT' })
-          break
+       case 'openChat':
+  dispatch({ type: 'OPEN_CHAT' })
+  // Laisser React re-render + NUI prendre le focus avant de focus l'input
+  setTimeout(() => {
+    const input = document.querySelector<HTMLInputElement>('input[class*="input"]')
+    input?.focus()
+  }, 50)
+  break
 
         case 'closeChat':
           dispatch({ type: 'CLOSE_CHAT' })

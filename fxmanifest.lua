@@ -4,14 +4,14 @@ game 'gta5'
 name "k_chat"
 description "chat system for FiveM with customizable UI and features"
 author "kitotake"
-version "1.0"
+version "1.1"
 
-ui_page 'web/index.html'
+ui_page 'web/dist/index.html'
 
 files {
-    'web/index.html',
-    'web/assets/style.css',
-    'web/assets/app.js'
+    'web/dist/index.html',
+    'web/dist/assets/*.js',
+    'web/dist/assets/*.css',
 }
 
 client_scripts {

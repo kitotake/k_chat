@@ -1,9 +1,7 @@
 -- ============================================================
 -- server/server.lua — Chat NUI · FiveM
--- Système de groupes basé sur la table SQL `users`
 -- ============================================================
 
--- ── Group levels (autonome, pas besoin d'importer PermissionGroups) ────────
 local groupLevels = {
     founder   = 3,
     admin     = 2,
@@ -11,9 +9,7 @@ local groupLevels = {
     user      = 0,
 }
 
--- ── Cache groupe par source ────────────────────────────────────────────────
--- Evite une requête SQL à chaque message
-local playerGroups = {}  -- [src] = 'admin' | 'moderator' | 'user' | ...
+local playerGroups = {}
 
 -- ── Helpers ────────────────────────────────────────────────────────────────
 local function getPlayerName(src)
@@ -25,7 +21,7 @@ local function getGroupLevel(src)
 end
 
 local function isStaff(src)
-    return getGroupLevel(src) >= 1  -- moderator, admin, founder
+    return getGroupLevel(src) >= 1
 end
 
 local function getIdentifier(src)
@@ -61,9 +57,9 @@ local function broadcastCounts()
     TriggerClientEvent('k_chat:updateCounts', -1, players, maxSlots, staff)
 end
 
--- ── Chargement du groupe depuis la DB à la connexion ──────────────────────
+-- ── Chargement du groupe depuis la DB ─────────────────────────────────────
 AddEventHandler('playerConnecting', function(_, __, deferrals)
-    local src        = source
+    local src        = source  -- capturer immédiatement avant tout saut async
     local identifier = getIdentifier(src)
 
     if not identifier then
@@ -71,37 +67,38 @@ AddEventHandler('playerConnecting', function(_, __, deferrals)
         return
     end
 
+    deferrals.defer()  -- bloquer la connexion le temps de la requête SQL
+
     exports.oxmysql:scalar(
         'SELECT `group` FROM `users` WHERE `identifier` = ? LIMIT 1',
         { identifier },
         function(group)
             playerGroups[src] = group or 'user'
-            lib.print.info(('[k_chat] %s (#%d) → group: %s'):format(
+            print(('^6[k_chat]^7 %s (#%d) → group: %s'):format(
                 getPlayerName(src), src, playerGroups[src]))
+            deferrals.done()
         end
     )
 end)
 
--- ── Nettoyage cache + broadcast à la déconnexion ──────────────────────────
+-- ── Nettoyage + broadcast à la déconnexion ────────────────────────────────
 AddEventHandler('playerDropped', function()
     local src = source
     playerGroups[src] = nil
     SetTimeout(500, broadcastCounts)
 end)
 
--- Broadcast aussi à chaque nouvelle connexion
 AddEventHandler('playerConnecting', function()
     SetTimeout(1500, broadcastCounts)
 end)
 
--- ── Event : demande compteurs + contacts PM (ouverture du chat) ────────────
+-- ── Event : demande compteurs + contacts PM ────────────────────────────────
 RegisterNetEvent('k_chat:requestCounts', function()
     local src = source
 
     local players, maxSlots, staff = buildCounts()
     TriggerClientEvent('k_chat:updateCounts', src, players, maxSlots, staff)
 
-    -- Liste des joueurs connectés comme contacts PM
     local contacts = {}
     for _, id in ipairs(GetPlayers()) do
         local pid = tonumber(id)
@@ -116,6 +113,10 @@ RegisterNetEvent('k_chat:requestCounts', function()
 end)
 
 -- ── Event : message global ─────────────────────────────────────────────────
+-- L'expéditeur est exclu du broadcast pour éviter le double affichage
+-- (son client ajoute le message via optimistic ou attend le retour serveur,
+--  selon le choix de l'UI — ici l'UI n'a pas de dispatch local, donc on
+--  renvoie aussi à l'expéditeur pour qu'il voie son propre message)
 RegisterNetEvent('k_chat:sendGlobal', function(message)
     local src = source
 
@@ -124,6 +125,7 @@ RegisterNetEvent('k_chat:sendGlobal', function(message)
 
     local author = getPlayerName(src)
 
+    -- Broadcast à TOUS y compris l'expéditeur (l'UI React ne fait plus de dispatch local)
     TriggerClientEvent('k_chat:receiveGlobal', -1, author, message)
 
     print(('^5[CHAT]^7 [GLOBAL] %s (#%d): %s'):format(author, src, message))
@@ -144,7 +146,6 @@ RegisterNetEvent('k_chat:sendStaff', function(message)
 
     local author = getPlayerName(src)
 
-    -- Envoyer uniquement aux staff connectés
     for _, id in ipairs(GetPlayers()) do
         local pid = tonumber(id)
         if isStaff(pid) then
@@ -155,6 +156,30 @@ RegisterNetEvent('k_chat:sendStaff', function(message)
     print(('^3[CHAT]^7 [STAFF] %s (#%d): %s'):format(author, src, message))
 end)
 
+-- ── Event : /me action RP ──────────────────────────────────────────────────
+-- Reçu depuis le client NUI (pas depuis le chat FiveM natif)
+RegisterNetEvent('k_chat:sendMe', function(action)
+    local src = source
+
+    if not validateMsg(action) then return end
+    action = sanitize(action)
+
+    local author = getPlayerName(src)
+    local text   = '* ' .. author .. ' ' .. action
+
+    -- Afficher dans le chat FiveM natif en jeu (visible aux joueurs proches ou à tous)
+    TriggerClientEvent('chat:addMessage', -1, {
+        color     = { 255, 255, 100 },
+        multiline = true,
+        args      = { '', text },
+    })
+
+    -- Également dans le chat NUI global pour les joueurs qui l'ont ouvert
+    TriggerClientEvent('k_chat:receiveGlobal', -1, author, '* ' .. action)
+
+    print(('^4[CHAT]^7 [ME] %s (#%d): %s'):format(author, src, action))
+end)
+
 -- ── Event : message privé ──────────────────────────────────────────────────
 RegisterNetEvent('k_chat:sendPm', function(targetId, message)
     local src = source
@@ -162,24 +187,21 @@ RegisterNetEvent('k_chat:sendPm', function(targetId, message)
     targetId = tonumber(targetId)
     if not targetId or targetId == src then return end
     if not validateMsg(message) then return end
-    if not GetPlayerName(targetId) then return end  -- joueur déconnecté
+    if not GetPlayerName(targetId) then return end
 
     message = sanitize(message)
 
     local fromName   = getPlayerName(src)
     local targetName = getPlayerName(targetId)
 
-    -- Au destinataire
     TriggerClientEvent('k_chat:receivePm', targetId, src, fromName, message)
-
-    -- Echo à l'expéditeur
     TriggerClientEvent('k_chat:receivePm', src, targetId, ('→ ' .. targetName), message)
 
     print(('^6[CHAT]^7 [PM] %s (#%d) → %s (#%d): %s'):format(
         fromName, src, targetName, targetId, message))
 end)
 
--- ── Export : récupérer le groupe d'un joueur (utile pour d'autres resources) ──
+-- ── Exports ────────────────────────────────────────────────────────────────
 exports('getPlayerGroup', function(src)
     return playerGroups[tonumber(src)] or 'user'
 end)
@@ -191,5 +213,13 @@ end)
 exports('isStaff', function(src)
     return isStaff(tonumber(src))
 end)
+
+RegisterCommand('me', function(source, args)
+    local text = table.concat(args, ' ')
+
+    if text == '' then return end
+
+    TriggerClientEvent('rp:me3d', -1, source, text)
+end, false)
 
 print('^2[k_chat] Server chargé^0')

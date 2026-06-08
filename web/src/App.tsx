@@ -1,20 +1,31 @@
-import { useEffect }          from 'react'
+// App.tsx
+import { useEffect, useRef } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { useChatStore }        from './store/chatStore'     // ← .tsx mais l'import reste sans extension
-import { useNUI }              from './hooks/useNUI'
-import { useSendNUI }          from './hooks/useSendNUI'
-import Tabbar                  from './components/Tabbar/Tabbar'
-import MessageList             from './components/MessageList/MessageList'
-import InputZone               from './components/InputZone/InputZone'
-import PMContacts              from './components/PM/PMContacts'
-import PMConversation          from './components/PM/PMConversation'
-import styles                  from './App.module.css'      // ← import manquant qui causait "Cannot find name 'styles'"
+import { useChatStore }   from './store/chatStore'
+import { useNUI }         from './hooks/useNUI'
+import { useSendNUI }     from './hooks/useSendNUI'
+import Tabbar             from './components/Tabbar/Tabbar'
+import MessageList        from './components/MessageList/MessageList'
+import InputZone          from './components/InputZone/InputZone'
+import PMContacts         from './components/PM/PMContacts'
+import PMConversation     from './components/PM/PMConversation'
+import styles             from './App.module.css'
 
 export default function App() {
   useNUI()
 
   const { state, dispatch } = useChatStore()
   const { send }            = useSendNUI()
+  const inputRef            = useRef<HTMLInputElement>(null)
+
+  // Focus l'input dès que le chat devient visible
+  useEffect(() => {
+    if (state.visible) {
+      // Délai court : laisse Framer Motion monter le composant + NUI prendre le focus
+      const t = setTimeout(() => inputRef.current?.focus(), 80)
+      return () => clearTimeout(t)
+    }
+  }, [state.visible])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -50,7 +61,7 @@ export default function App() {
                 </span>
               </div>
               <MessageList messages={state.messages.global} channel="global" />
-              <InputZone channel="global" />
+              <InputZone channel="global" inputRef={inputRef} />
             </div>
           )}
 
@@ -65,7 +76,7 @@ export default function App() {
                 </span>
               </div>
               <MessageList messages={state.messages.staff} channel="staff" />
-              <InputZone channel="staff" />
+              <InputZone channel="staff" inputRef={inputRef} />
             </div>
           )}
 
@@ -73,7 +84,7 @@ export default function App() {
             <div className={styles.view}>
               <div className={styles.viewDesc}>
                 <span className={styles.descText}>
-                  💬 Messages privés — accès Fondateur uniquement
+                  💬 Messages privés
                 </span>
               </div>
               <div className={styles.pmSplit}>
