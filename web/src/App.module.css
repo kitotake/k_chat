@@ -1,0 +1,53 @@
+/* App.module.css */
+.root {
+  position: fixed;
+  bottom: 40px;
+  left: 40px;
+  width: 680px;
+  height: 530px;
+  background: var(--bg-root);
+  border-radius: var(--radius-lg);
+  border: 0.5px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow:
+    0 8px 32px rgba(0,0,0,0.55),
+    0 1px 0 rgba(255,255,255,0.04) inset;
+}
+
+.view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-view);
+}
+
+.viewDesc {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 14px;
+  border-bottom: 0.5px solid var(--border);
+  flex-shrink: 0;
+}
+
+.descText {
+  font-size: 11px;
+  color: var(--txt-dim);
+  font-family: var(--font-mono);
+}
+
+.descRight {
+  margin-left: auto;
+  font-size: 10px;
+  color: rgba(255,255,255,0.18);
+  font-family: var(--font-mono);
+}
+
+.pmSplit {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
